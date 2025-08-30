@@ -63,6 +63,29 @@ import {
 const ALARM_NAME = 'raindrop-sync';
 const SYNC_PERIOD_MINUTES = 10;
 
+async function recursivelyFindBookmarks(folderId) {
+  const bookmarks = [];
+  try {
+    const tree = await chromeP.bookmarksGetSubTree(folderId);
+    function flatten(nodes) {
+      for (const node of nodes) {
+        if (node.url) {
+          bookmarks.push(node);
+        }
+        if (node.children) {
+          flatten(node.children);
+        }
+      }
+    }
+    if (tree && tree[0] && tree[0].children) {
+      flatten(tree[0].children);
+    }
+  } catch (e) {
+    console.error(`Failed to get bookmarks subtree for ${folderId}`, e);
+  }
+  return bookmarks;
+}
+
 async function deleteLocalData() {
   try {
     const { rootFolderId } = await loadState();
@@ -149,10 +172,32 @@ async function performSync() {
       getOrCreateRootFolder,
       getOrCreateChildFolderLocal,
     );
-    const { itemMap: prunedItemMap, didChange: deletionsChanged } =
-      state.lastSync
-        ? await syncDeletedItems(state.lastSync, updatedItemMap, collectionMap)
-        : { itemMap: updatedItemMap, didChange: false };
+    let prunedItemMap = updatedItemMap;
+    let deletionsChanged = false;
+    if (state.lastSync) {
+      const result = await syncDeletedItems(
+        state.lastSync,
+        updatedItemMap,
+        collectionMap,
+      );
+      prunedItemMap = result.itemMap;
+      deletionsChanged = result.didChange;
+    } else {
+      // Full sync: find and remove orphaned bookmarks
+      const localBookmarks = await recursivelyFindBookmarks(rootFolderId);
+      const validLocalIds = new Set(Object.values(updatedItemMap));
+      for (const bookmark of localBookmarks) {
+        if (!validLocalIds.has(bookmark.id)) {
+          try {
+            await chromeP.bookmarksRemove(bookmark.id);
+            deletionsChanged = true;
+          } catch (error) {
+            console.warn(`Failed to remove orphaned bookmark: ${error}`);
+          }
+        }
+      }
+    }
+
     hasAnyChanges = Boolean(foldersChanged || itemsChanged || deletionsChanged);
     await saveState({
       lastSync: newLastSyncISO,
