@@ -3,6 +3,7 @@ import { fetchGroupsAndCollections } from './modules/collections.js';
 import {
   getAllBookmarkFolders,
   getBookmarksBarFolderId,
+  ROOT_FOLDER_NAME,
 } from './modules/bookmarks.js';
 import { chromeP } from './modules/chrome.js';
 import { loadState, saveState } from './modules/state.js';
@@ -32,6 +33,9 @@ import { loadState, saveState } from './modules/state.js';
   );
   const parentFolderStatusEl = /** @type {HTMLSpanElement|null} */ (
     document.getElementById('parent-folder-status')
+  );
+  const parentFolderDescriptionEl = /** @type {HTMLParagraphElement|null} */ (
+    document.getElementById('parent-folder-description')
   );
 
   // --- new: helper to populate parent folder select ---
@@ -100,6 +104,9 @@ import { loadState, saveState } from './modules/state.js';
   }
 
   async function load() {
+    if (parentFolderDescriptionEl) {
+      parentFolderDescriptionEl.textContent = `Choose the parent bookmark folder. A "${ROOT_FOLDER_NAME}" subfolder will be created.`;
+    }
     try {
       const data = await chromeP.storageGet([
         'raindropApiToken',
